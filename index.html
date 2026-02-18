@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Steam game Roulette v1.5.0</title>
+    <style>
+        #bg-canvas {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            z-index: -1;
+            pointer-events: none;
+        }
+
+        body { 
+            background: #1b2838; 
+            color: white; 
+            font-family: 'Motiva Sans', Sans-serif; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            padding: 40px 0; 
+            margin: 0; 
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        #winner-display { 
+            font-size: 28px; 
+            font-weight: bold; 
+            margin-bottom: 30px; 
+            color: #66c0f4; 
+            height: 40px; 
+            text-align: center;
+            transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .roulette-wrapper { 
+            position: relative; 
+            width: 850px; 
+            height: 160px; 
+            border: 2px solid #2a475e; 
+            overflow: hidden; 
+            background: #000;
+            border-radius: 8px; 
+            box-shadow: 0 0 30px rgba(0,0,0,0.5);
+        }
+
+        .pointer { 
+            position: absolute; 
+            left: 50%; 
+            transform: translateX(-50%); 
+            width: 4px; 
+            height: 100%; 
+            background: #ff4747; 
+            z-index: 10; 
+            box-shadow: 0 0 15px #ff4747; 
+        }
+
+        .track { display: flex; align-items: center; height: 100%; will-change: transform; }
+
+        .item { 
+            width: 250px; 
+            height: 124px; 
+            margin: 0 5px; 
+            flex-shrink: 0; 
+            background: #16202d; 
+            border-bottom: 5px solid; 
+            box-sizing: border-box;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: box-shadow 0.6s ease;
+        }
+
+        .trash { border-color: #4b4b4b; color: #4b4b4b; }
+        .common { border-color: #ffffff; color: #ffffff; }
+        .uncommon { border-color: #32cd32; color: #32cd32; }
+        .rare { border-color: #4b69ff; color: #4b69ff; }
+        .epic { border-color: #8847ff; color: #8847ff; }
+        .legendary { border-color: #caab05; color: #caab05; }
+        .mythic { border-color: #eb4b4b; color: #eb4b4b; }
+		.godly { border-color: #40e0d0; color: #40e0d0; }
+
+        .item img { width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
+
+        @keyframes itemAppear {
+            from { opacity: 0; transform: translateY(20px) scale(0.9); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
+        .item-animate {
+            animation: itemAppear 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+            opacity: 0;
+        }
+
+        @keyframes wonPulse {
+            0% { transform: scale(1); box-shadow: 0 0 20px currentColor; }
+            50% { transform: scale(1.05); box-shadow: 0 0 50px currentColor; }
+            100% { transform: scale(1); box-shadow: 0 0 20px currentColor; }
+        }
+        .item.won {
+            z-index: 100;
+            position: relative;
+            border-width: 3px;
+            animation: wonPulse 2s infinite ease-in-out;
+            filter: brightness(1.2);
+        }
+
+        .controls { display: flex; gap: 15px; margin-top: 35px; }
+        button { padding: 15px 35px; border: none; color: white; cursor: pointer; font-size: 18px; border-radius: 4px; font-weight: bold; transition: 0.2s; }
+        #spin-btn { background: linear-gradient(to bottom, #a4d015 5%, #4b6b22 100%); }
+        #spin-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        #launch-btn { background: #66c0f4; color: #1b2838; display: none; }
+        #clear-btn { background: #3d4450; font-size: 14px; opacity: 0.6; }
+
+        .history { margin-top: 50px; width: 850px; border-top: 1px solid #2a475e; padding-top: 20px; }
+        .history h3 { color: #8f98a0; font-size: 14px; text-transform: uppercase; margin-bottom: 15px; }
+        #history-list { display: flex; flex-wrap: wrap-reverse; gap: 10px; list-style: none; padding: 0; }
+        .history-item { padding: 6px 14px; background: #233c51; border-radius: 4px; font-size: 12px; border-left: 4px solid; }
+
+        .stats-footer { 
+            margin-top: 50px; 
+            padding: 20px; 
+            background: rgba(0,0,0,0.3); 
+            border-radius: 8px; 
+            width: 810px;
+            font-size: 13px;
+        }
+        .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 10px; }
+        .stat-line { color: #8f98a0; }
+        .stat-line b { color: white; }
+
+        .library-overlay {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(10, 15, 23, 0.98);
+            z-index: 1000;
+            display: none;
+            overflow-y: auto;
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        .library-overlay::-webkit-scrollbar { display: none; }
+
+        .library-content {
+            width: 95%;
+            max-width: 1600px;
+            margin: 40px auto;
+            padding: 20px;
+        }
+
+        .library-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid #2a475e;
+            padding-bottom: 15px;
+            margin-bottom: 25px;
+        }
+
+        .library-grid { 
+            display: grid; 
+            grid-template-columns: repeat(7, 1fr); 
+            gap: 15px; 
+            padding: 20px;
+            justify-content: center;
+        }
+
+        .lib-card { 
+            width: 100%; 
+            height: auto; 
+            aspect-ratio: 250 / 124; 
+            background: #16202d; 
+            border-bottom: 5px solid; 
+            cursor: pointer; 
+            transition: 0.3s; 
+        }
+
+        .lib-card:hover { 
+            transform: scale(1.08); 
+            box-shadow: 0 0 30px currentColor; 
+            z-index: 10; 
+            filter: brightness(1.2);
+        }
+        .lib-card img { width: 100%; height: 100%; object-fit: cover; }
+
+        .lib-nav-arrow {
+            position: fixed;
+            font-size: 40px;
+            color: #66c0f4;
+            text-shadow: 0 0 15px rgba(102, 192, 244, 0.8);
+            pointer-events: none;
+            opacity: 0.4;
+            z-index: 1001;
+            transition: opacity 0.3s;
+            animation: arrowBounce 2s infinite ease-in-out;
+        }
+
+        .top-left { top: 100px; left: 30px; }
+        .top-right { top: 100px; right: 30px; }
+        .bot-left { bottom: 50px; left: 30px; opacity: 0; }
+        .bot-right { bottom: 50px; right: 30px; opacity: 0; }
+
+        @keyframes arrowBounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(10px); }
+        }
+
+        @keyframes slideIn {
+            from { transform: translateX(120%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        @keyframes slideOut {
+            from { transform: translateX(0); opacity: 1; }
+            to { transform: translateX(120%); opacity: 0; }
+        }
+
+        .ach-card { 
+            background: #233c51; 
+            padding: 15px; 
+            border-radius: 8px; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            text-align: center;
+            border: 2px solid #2a475e; 
+            opacity: 0.3; 
+            filter: grayscale(1); 
+            transition: 0.3s;
+        }
+
+        .ach-card.unlocked { 
+            opacity: 1; 
+            filter: grayscale(0); 
+            border-color: #caab05; 
+            box-shadow: 0 0 15px rgba(202, 171, 5, 0.3);
+        }
+
+        .ach-icon { font-size: 30px; margin-bottom: 10px; }
+        .ach-title { color: #66c0f4; font-weight: bold; font-size: 13px; }
+        .ach-desc { color: #8f98a0; font-size: 11px; margin-top: 5px; }
+    </style>
+</head>
+<body>
+    <canvas id="bg-canvas"></canvas>
+    <div id="winner-display">ВЫБЕРИТЕ JSON ФАЙЛ С ИГРАМИ</div>
+
+    <div class="roulette-wrapper" id="roulette-box">
+        <div class="pointer"></div>
+        <div id="track" class="track"></div>
+    </div>
+
+    <div class="controls">
+        <button id="spin-btn" onclick="spin()" disabled>Крутить</button>
+        <button id="launch-btn" onclick="launchGame()">Запустить игру</button>
+        <button id="lib-btn" onclick="toggleLibrary(true)" style="background: #2a475e; display: none;">Библиотека</button>
+        <button id="ach-btn" onclick="toggleAchievements(true)" style="background: #4b6b22; display: none;">Достижения</button>
+        <input type="file" id="file-selector" style="display: none;" accept=".json" onchange="handleManualUpload(event)">
+        <button id="upload-btn" onclick="document.getElementById('file-selector').click()" style="background: #3d4450;">Загрузить JSON</button>
+        <button id="clear-btn" onclick="clearHistory()">Очистить историю</button>
+    </div>
+
+    <div id="achievements-overlay" class="library-overlay">
+        <div class="library-content">
+            <div class="library-header">
+                <h2 style="color: #caab05; margin: 0;">🏆 МОИ ДОСТИЖЕНИЯ (<span id="ach-count">0</span>/21)</h2>
+                <button onclick="toggleAchievements(false)" style="background:none; color:white; border:none; font-size: 35px; cursor:pointer;">✕</button>
+				<button onclick="fullReset()" style="background: #eb4b4b; font-size: 12px; margin-left: 20px;">Сбросить всё</button>
+            </div>
+            <div id="achievements-grid" class="library-grid"></div>
+        </div>
+    </div>
+
+    <div class="history">
+        <h3>История:</h3>
+        <ul id="history-list"></ul>
+    </div>
+
+    <div class="stats-footer">
+        <div style="border-bottom: 1px solid #2a475e; padding-bottom: 10px; margin-bottom: 10px;">
+            <b>БИБЛИОТЕКА:</b> <span id="game-count">0</span> игр загружено
+        </div>
+        <div class="stats-grid" id="chance-stats"></div>
+    </div>
+
+    <div id="library-overlay" class="library-overlay">
+        <div class="library-content">
+            <div class="library-header">
+                <h2 style="color: #66c0f4; margin: 0;">БИБЛИОТЕКА ИГР (<span id="lib-count">0</span>)</h2>
+                <button onclick="toggleLibrary(false)" style="background:none; color:white; border:none; font-size: 35px; cursor:pointer;">✕</button>
+            </div>
+            <div id="library-grid" class="library-grid"></div>
+        </div>
+        <div class="lib-nav-arrow top-left">↓</div>
+        <div class="lib-nav-arrow top-right">↓</div>
+        <div class="lib-nav-arrow bot-left">↑</div>
+        <div class="lib-nav-arrow bot-right">↑</div>
+    </div>
+
+    <script>
+        let myGames = [], audioCtx = null, lastWonGame = null, lastGameId = null, idleTimer = null;
+        let trashStreak = 0, sessionTrashCount = 0, clearClicks = 0;
+        let totalSpins = parseInt(localStorage.getItem('stats_total_spins') || '0');
+        let libraryOpens = parseInt(localStorage.getItem('stats_library_opens') || '0');
+        let userAchievements = JSON.parse(localStorage.getItem('steam_roulette_achievements') || '{}');
+		let gamesSinceClear = parseInt(localStorage.getItem('gamesSinceClear') || '0', 10);
+
+        const ITEM_WIDTH = 260, WRAPPER_WIDTH = 850;
+        const rarityWeights = { 
+				trash: 30,          /* ← 100 */ 
+				common: 50,         /* ← 100 */ 
+				uncommon: 75,       /* ← 100 */ 
+				rare: 65,           /* ← 100 */
+				epic: 55,            /* ← 100 */
+				legendary: 40,       /* ← 100 */ 
+				mythic: 30,          /* ← 100 */
+				godly: 10           /* ← 100 */
+			};
+			
+			const hentaiKeywords = [
+			'hentai',      // уже было
+			'Sex',        // примеры
+			'Furry',
+			'adult',
+			'nsfw',
+			'Titty',
+			'Miss Neko',
+			'Mirror',
+			'My Cute',
+			'XXX',
+			'Anthro Heat',
+			'Agony UNRATED',
+			'Anomalous Coffee Machine',
+			// Добавляйте сюда любые слова – они будут проверяться автоматически
+		];
+		
+		const hentaiRegexes = hentaiKeywords.map(keyword => {
+		  // Экранируем спец‑символы, чтобы они не ломали regex
+		  const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+		  // \b – граница слова (объединяет начало/конец слова).  
+		  // Это позволяет точно матчить "hentai" в "hentai world" и не "hentaiworld".
+		  return new RegExp(`\\b${escaped}\\b`, 'i');  // i – без учёта регистра
+		});		
+					
+
+        const achievements = {
+            first_spin: { title: "Первый пошел!", desc: "Сделать первую прокрутку", icon: "☝" },
+            mythic_drop: { title: "Повезло-Повезло", desc: "Выбить мифическую игру", icon: "🎲" },
+            trash_collector: { title: "Мусорщик", desc: "Выбить 5 'мусорных' игр подряд", icon: "🗑️" },
+            librarian: { title: "Библиотекарь", desc: "Загрузить JSON, в котором более 100 игр", icon: "📚" },
+            night_walker: { title: "Завхоз", desc: "Заглянуть в библиотеку 10 раз", icon: "🗝️" },
+            close_call: { title: "На тоненького", desc: "Остановиться на самом краю карточки", icon: "📏" },
+            ludoman: { title: "Лудоман", desc: "Сделать 100 круток", icon: "🎰" },
+            dodep: { title: "Додеп", desc: "Вы зашли слишком далеко (200 круток)", icon: "💸" },
+            patient: { title: "Терпеливый", desc: "Провести на странице 10 минут без круток", icon: "🧘" },
+            night_shift: { title: "Ночная смена", desc: "Крутка в период с 00:00 до 05:00", icon: "🌙" },
+            denial: { title: "Отрицание", desc: "5 раз очистить историю", icon: "🧹" },
+            grey_days: { title: "Серые будни", desc: "10 Trash-игр за сессию", icon: "🌫️" },
+            quality_control: { title: "Контроль качества", desc: "Пролистать библиотеку до самого низа", icon: "📑" },
+            no_hentai: { title: "Вам есть 18 ?", desc: "Вы загрузили порно игру", icon: "🔞" },
+            epicenter: { title: "Эпицентр", desc: "Остановка ровно по центру", icon: "🎯" },
+            stability: { title: "Стабильность", desc: "Выбить одну игру дважды подряд", icon: "🔄" },
+			godly_drop: { title: "Божественный бросок", desc: "Выбить игру уровня 'Дар Богов'", icon: "⚡" },
+			early_bird: { title: "Ранняя пташка",desc: "Сделать крутку с 05:00 до 09:00", icon: "☕" },
+			hoarder: { title: "Плюшкин",desc: "Накопить 50 игр в истории, не очищая её", icon: "📦" },
+			no_choice: { title: "Без вариантов", desc: "Загрузить JSON, в котором всего 1 игра", icon: "🤡" },
+			minimalist: { title: "Минималист", desc: "Очистить историю, когда в ней была всего 1 игра", icon: "🤏" }
+        };
+        /* --- ДВИЖОК ЖИВОГО ФОНА --- */
+        const canvas = document.getElementById('bg-canvas');
+        const ctx = canvas.getContext('2d');
+        let particles = [];
+        let particleSpeedMult = 1;
+
+        function initP() {
+            canvas.width = window.innerWidth; 
+            canvas.height = window.innerHeight;
+            particles = Array(120).fill().map(() => ({ 
+                x: Math.random() * canvas.width, 
+                y: Math.random() * canvas.height, 
+                sX: Math.random() - 0.5, 
+                sY: Math.random() - 0.5, 
+                op: Math.random() * 0.5 + 0.1 
+            }));
+        }
+
+        function animP() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = "rgba(102, 192, 244, 0.4)";
+            particles.forEach(p => {
+                p.x += p.sX * particleSpeedMult; 
+                p.y += p.sY * particleSpeedMult;
+                if(p.x < 0) p.x = canvas.width; if(p.x > canvas.width) p.x = 0;
+                if(p.y < 0) p.y = canvas.height; if(p.y > canvas.height) p.y = 0;
+                ctx.globalAlpha = p.op; 
+                ctx.beginPath(); ctx.arc(p.x, p.y, 1.5, 0, Math.PI * 2); ctx.fill();
+            });
+            requestAnimationFrame(animP);
+        }
+        window.addEventListener('resize', initP);
+        initP(); animP();
+
+        /* --- СИСТЕМНЫЕ ФУНКЦИИ ДОСТИЖЕНИЙ --- */
+        function unlockAchievement(id) {
+            if (userAchievements[id]) return;
+            userAchievements[id] = new Date().toLocaleDateString();
+            localStorage.setItem('steam_roulette_achievements', JSON.stringify(userAchievements));
+            showAchievementPopup(achievements[id]);
+        }
+
+        function showAchievementPopup(ach) {
+            const popup = document.createElement('div');
+            popup.style.cssText = `position: fixed; bottom: 20px; right: 20px; background: #2a475e; border-left: 5px solid #66c0f4; padding: 15px; border-radius: 4px; display: flex; align-items: center; gap: 15px; z-index: 2000; animation: slideIn 0.5s ease-out; box-shadow: 0 5px 15px rgba(0,0,0,0.5);`;
+            popup.innerHTML = `<div style="font-size: 30px;">${ach.icon}</div><div><div style="color: #66c0f4; font-weight: bold; font-size: 14px;">ДОСТИЖЕНИЕ ПОЛУЧЕНО</div><div style="color: white; font-size: 16px;">${ach.title}</div></div>`;
+            document.body.appendChild(popup);
+            setTimeout(() => {
+                popup.style.animation = 'slideOut 0.5s ease-in forwards';
+                setTimeout(() => popup.remove(), 500);
+            }, 4000);
+        }
+
+		function containsKeyword(text) {
+			  if (!text) return false;
+			  return hentaiRegexes.some(regex => regex.test(text));
+			}
+
+
+
+        function resetIdleTimer() {
+            if (idleTimer) clearTimeout(idleTimer);
+            idleTimer = setTimeout(() => unlockAchievement('patient'), 600000);
+        }
+        resetIdleTimer();
+
+        /* --- ОБРАБОТКА ЗАГРУЗКИ --- */
+        function handleManualUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+			try {
+				const data = JSON.parse(e.target.result);
+				myGames = data.filter(item => item.id);
+
+				/* ---------- NEW BEGIN ---------- */
+				// 1) Проверка имени файла
+				const fileNameHasKeyword = containsKeyword(file.name);
+				const gameHasKeyword = myGames.some(g =>
+					containsKeyword(g.name) ||
+					containsKeyword(g.desc) ||
+					containsKeyword(g.info)  // если у игры есть поле info
+				);
+
+				// 3) Если хотя бы одно условие истинно – разблокируем достижение
+				if (fileNameHasKeyword || gameHasKeyword) {
+					unlockAchievement('no_hentai');
+				}
+				/* ---------- NEW END ---------- */
+
+				finalizeDataLoad("Список импортирован!");
+			} catch (err) {
+				alert("Ошибка JSON");
+			}
+		};
+            reader.readAsText(file);
+        }
+
+        function finalizeDataLoad(msg) {
+            document.getElementById('winner-display').textContent = msg;
+            document.getElementById('spin-btn').disabled = false;
+            updateStats();
+            if (myGames.length >= 100) unlockAchievement('librarian');
+			if (myGames.length === 1) unlockAchievement('no_choice');
+            const track = document.getElementById('track');
+            track.innerHTML = '';
+            for (let i = 0; i < 12; i++) {
+                const game = weightedRandom();
+                if (game) track.appendChild(createNode(game)).classList.add('item-animate');
+            }
+            document.getElementById('lib-btn').style.display = 'block';
+            document.getElementById('ach-btn').style.display = 'block';
+            document.getElementById('lib-count').textContent = myGames.length;
+            document.getElementById('upload-btn').style.display = 'none';
+        }
+        /* --- РАНДОМ НА ОСНОВЕ ЦВЕТА --- */
+        function weightedRandom() {
+            if (myGames.length === 0) return null;
+            const totalWeight = myGames.reduce((sum, g) => sum + rarityWeights[g.color], 0);
+            let random = Math.random() * totalWeight;
+            for (const game of myGames) {
+                const weight = rarityWeights[game.color];
+                if (random < weight) return game;
+                random -= weight;
+            }
+        }
+
+        /* --- СОЗДАНИЕ КАРТОЧКИ --- */
+        function createNode(game) {
+            if (!game) return document.createElement('div');
+            const div = document.createElement('div');
+            div.className = `item ${game.color}`;
+            const imgUrl = `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${game.id}/header.jpg`;
+            div.innerHTML = `
+                <img src="${imgUrl}" 
+                     loading="lazy" 
+                     onerror="this.onerror=null; this.src='https://i.pinimg.com/originals/fe/df/71/fedf7125acf620e856b6d09ef44eee51.gif';">
+            `;
+            return div;
+        }
+
+        /* --- ОБНОВЛЕНИЕ СТАТИСТИКИ --- */
+        function updateStats() {
+            const totalWeight = myGames.reduce((sum, g) => sum + rarityWeights[g.color], 0);
+            const statsBox = document.getElementById('chance-stats');
+            statsBox.innerHTML = ''; 
+            document.getElementById('game-count').textContent = myGames.length;
+
+            const labels = { 
+				trash: "Мусор", 
+				common: "Обычные", 
+				uncommon: "Необычные", 
+				rare: "Редкие", 
+				epic: "Эпические", 
+				legendary: "Легендарные", 
+				mythic: "Мифические",
+				godly: "Дар Богов"      /* ← NEW */
+			};
+            const colors = { 
+				trash: '#4b4b4b', 
+				common: '#ffffff', 
+				uncommon: '#32cd32', 
+				rare: '#4b69ff', 
+				epic: '#8847ff', 
+				legendary: '#caab05', 
+				mythic: '#eb4b4b',
+				godly: '#40e0d0'       /* ← NEW */
+			};
+
+            Object.keys(rarityWeights).forEach(rarity => {
+                const count = myGames.filter(g => g.color === rarity).length;
+                const chance = count > 0 ? ((count * rarityWeights[rarity] / totalWeight) * 100).toFixed(2) : 0;
+                const div = document.createElement('div');
+                div.className = 'stat-line';
+                div.innerHTML = `<span style="color:${colors[rarity]}">${labels[rarity]}:</span> <b>${chance}%</b> <span style="font-size:11px; opacity:0.6;">(${count} шт.)</span>`;
+                statsBox.appendChild(div);
+            });
+        }
+
+        /* --- WEB AUDIO API (ЗВУКИ) --- */
+        function playTick() {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(120, audioCtx.currentTime); 
+            osc.frequency.exponentialRampToValueAtTime(40, audioCtx.currentTime + 0.1); 
+            gain.gain.setValueAtTime(0.04, audioCtx.currentTime); 
+            gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.1); 
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.12);
+        }
+
+        function playVictorySound() {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            audioCtx.resume().then(() => {
+                const notes = [261.63, 329.63, 392.00, 523.25];
+                const now = audioCtx.currentTime;
+                notes.forEach((f, i) => {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(f, now + (i * 0.1));
+                    gain.gain.setValueAtTime(0, now + (i * 0.1));
+                    gain.gain.linearRampToValueAtTime(0.1, now + (i * 0.1) + 0.05); 
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + (i * 0.1) + 0.5);
+                    osc.connect(gain); gain.connect(audioCtx.destination);
+                    osc.start(now + (i * 0.1)); osc.stop(now + (i * 0.1) + 0.6);
+                });
+            });
+        }
+		
+		function addGameToHistory(game) {
+			// Добавляем игру в массив‑историю
+			myGames.push(game);
+			gamesSinceClear++;                           // в памяти
+			localStorage.setItem('gamesSinceClear', String(gamesSinceClear)); // сохраняем
+
+			// Проверяем достижение «Плюшкин»
+			if (gamesSinceClear >= 50 && !userAchievements['hoarder']) {
+				unlockAchievement('hoarder');
+			}
+		}
+		
+		
+		
+		
+		
+        /* --- ЛОГИКА РУЛЕТКИ --- */
+        function spin() {
+            resetIdleTimer();
+            if (myGames.length === 0) return;
+            const hour = new Date().getHours();
+			console.log('Текущее время (локальный час):', hour);
+            if (hour >= 0 && hour <= 5) unlockAchievement('night_shift');
+			if (hour >= 5 && hour < 9) unlockAchievement('early_bird');
+            if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+			
+            
+            const spinTime = 12, winIdx = 100;
+            document.getElementById('spin-btn').disabled = true;
+            document.getElementById('launch-btn').style.display = 'none';
+            document.getElementById('winner-display').textContent = "ВЫБОР...";
+
+            const track = document.getElementById('track');
+            track.style.transition = 'none';
+            track.style.transform = 'translateX(0)';
+            track.innerHTML = '';
+
+            const spinData = [];
+            for (let i = 0; i < winIdx + 15; i++) spinData.push(weightedRandom());
+            lastWonGame = spinData[winIdx];
+			addGameToHistory(lastWonGame);
+
+            const fragment = document.createDocumentFragment();
+            spinData.forEach(game => fragment.appendChild(createNode(game)));
+            track.appendChild(fragment);
+
+            const basePos = (winIdx * ITEM_WIDTH) - (WRAPPER_WIDTH / 2) + (ITEM_WIDTH / 2) + 5;
+            const randomOffset = Math.floor(Math.random() * 250) - 125;
+            const finalPos = Math.floor(basePos + randomOffset);
+
+            let lastTickIdx = -1;
+            const startTime = Date.now();
+            const centerLine = document.getElementById('roulette-box').getBoundingClientRect().left + (WRAPPER_WIDTH / 2);
+
+
+
+        function updateTicks() {
+            const elapsed = (Date.now() - startTime) / 1000;
+            if (elapsed > spinTime + 0.2) return;
+            const items = track.getElementsByClassName('item');
+            for (let i = 0; i < items.length; i++) {
+                const rect = items[i].getBoundingClientRect();
+                if (centerLine >= rect.left && centerLine <= rect.right) {
+                    if (i !== lastTickIdx) { playTick(); lastTickIdx = i; }
+                    break;
+                }
+            }
+                requestAnimationFrame(updateTicks);
+        }
+
+            setTimeout(() => {
+                track.style.transition = `transform ${spinTime}s cubic-bezier(0.1, 0, 0, 1)`;
+                track.style.transform = `translateX(-${finalPos}px)`;
+                requestAnimationFrame(updateTicks);
+            }, 50);
+
+            setTimeout(() => {
+                document.getElementById('winner-display').textContent = lastWonGame.name.toUpperCase();
+                const winner = track.getElementsByClassName('item')[winIdx];
+                if (winner) {
+                    winner.classList.add('won');
+                    const colors = { 
+						trash: '#4b4b4b', 
+						common: '#ffffff', 
+						uncommon: '#32cd32', 
+						rare: '#4b69ff', 
+						epic: '#8847ff', 
+						legendary: '#caab05', 
+						mythic: '#eb4b4b',
+						godly: '#40e0d0'       /* ← NEW */
+					};
+                    winner.style.boxShadow = `0 0 40px ${colors[lastWonGame.color]}`;
+                }
+                if (Math.abs(randomOffset) < 5) unlockAchievement('epicenter');
+                if (Math.abs(randomOffset) > 120) unlockAchievement('close_call');
+                if (lastWonGame.id === lastGameId) unlockAchievement('stability');
+                lastGameId = lastWonGame.id;
+                unlockAchievement('first_spin');
+                if (lastWonGame.color === 'mythic') unlockAchievement('mythic_drop');
+				if (lastWonGame.color === 'godly') unlockAchievement('godly_drop');
+                saveResult(lastWonGame);
+                playVictorySound();
+                document.getElementById('spin-btn').disabled = false;
+                document.getElementById('launch-btn').style.display = 'block';
+            }, spinTime * 1000 + 200);
+        }
+
+        function saveResult(game) {
+            const h = JSON.parse(localStorage.getItem('rouletteHistory') || '[]');
+            h.push({ name: game.name, color: game.color });
+            localStorage.setItem('rouletteHistory', JSON.stringify(h));
+            if (game.color === 'trash') {
+                trashStreak++; sessionTrashCount++;
+                if (trashStreak >= 5) unlockAchievement('trash_collector');
+                if (sessionTrashCount >= 10) unlockAchievement('grey_days');
+            } else trashStreak = 0;
+            totalSpins++; localStorage.setItem('stats_total_spins', totalSpins);
+            if (totalSpins >= 100) unlockAchievement('ludoman');
+            if (totalSpins >= 200) unlockAchievement('dodep');
+            addHistoryUI(game);
+        }
+
+                function toggleLibrary(show) {
+            const el = document.getElementById('library-overlay');
+            el.style.display = show ? 'block' : 'none';
+            
+            if (show) {
+                // Блокируем скролл основной страницы
+                document.body.style.overflow = 'hidden';
+                
+                // Сбрасываем скролл библиотеки в начало при открытии
+                el.scrollTop = 0;
+
+                // Логика ачивки "Завхоз"
+                libraryOpens++; 
+                localStorage.setItem('stats_library_opens', libraryOpens);
+                if (libraryOpens >= 10) unlockAchievement('night_walker');
+                
+                renderLibrary();
+
+                // УПРАВЛЕНИЕ СТРЕЛКАМИ И АЧИВКОЙ ПРИ СКРОЛЛЕ
+                el.onscroll = () => {
+                    const scrollPos = el.scrollTop;
+                    const maxScroll = el.scrollHeight - el.clientHeight;
+
+                    // Верхние стрелки (↓) затухают при начале скролла
+                    document.querySelectorAll('.top-left, .top-right').forEach(arrow => {
+                        arrow.style.opacity = scrollPos > 50 ? '0' : '0.4';
+                    });
+
+                    // Нижние стрелки (↑) появляются, когда мы отошли от верха
+                    document.querySelectorAll('.bot-left, .bot-right').forEach(arrow => {
+                        arrow.style.opacity = scrollPos > 100 ? '0.4' : '0';
+                    });
+
+                    // Ачивка "Контроль качества"
+                    if (scrollPos >= maxScroll - 15 && myGames.length > 20) {
+                        unlockAchievement('quality_control');
+                    }
+                };
+            } else {
+                // Возвращаем скролл основной странице при закрытии
+                document.body.style.overflow = ''; 
+            }
+        }
+
+		
+		
+
+        function renderLibrary() {
+            const grid = document.getElementById('library-grid'); 
+            grid.innerHTML = '';
+            // Сортировка: мифические в начале, мусор в конце
+            const order = { mythic: 1, legendary: 2, epic: 3, rare: 4, uncommon: 5, common: 6, trash: 7, godly: 8 };
+            const sorted = [...myGames].sort((a, b) => (order[a.color] || 99) - (order[b.color] || 99));
+
+            sorted.forEach(game => {
+                const div = document.createElement('div'); 
+                div.className = `lib-card ${game.color}`;
+                const imgUrl = `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${game.id}/header.jpg`;
+                
+                div.innerHTML = `
+                    <img src="${imgUrl}" 
+                         loading="lazy" 
+                         onerror="this.onerror=null; this.src='https://i.pinimg.com/originals/fe/df/71/fedf7125acf620e856b6d09ef44eee51.gif';">
+                `;
+                
+                div.onclick = () => { 
+                    if(confirm(`ЗАПУСТИТЬ ${game.name}?`)) window.location.href=`steam://run/${game.id}`; 
+                };
+                grid.appendChild(div);
+            });
+        }
+
+
+		function fullReset() {
+			if (confirm('ВНИМАНИЕ! Это удалит ВСЕ достижения и обнулит статистику. Продолжить?')) {
+				// Очищаем ключи достижений и статистики
+				localStorage.removeItem('steam_roulette_achievements');
+				localStorage.removeItem('stats_library_opens');
+				localStorage.removeItem('stats_total_spins');
+				
+				// Обнуляем переменные в текущей сессии
+				userAchievements = {};
+				libraryOpens = 0;
+				totalSpins = 0;
+				
+				alert('Данные стерты. Страница будет перезагружена.');
+				location.reload();
+			}
+		}
+
+
+
+
+
+
+
+
+
+        function toggleAchievements(show) { document.getElementById('achievements-overlay').style.display = show ? 'block' : 'none'; 
+		// Блокируем скролл страницы
+		document.body.style.overflow = show ? 'hidden' : '';
+		if (show) renderAchievements(); }
+		function renderAchievements() {
+			const grid = document.getElementById('achievements-grid'); 
+			grid.innerHTML = '';
+			let count = 0;
+
+			Object.keys(achievements).forEach(id => {
+				const ach = achievements[id];
+				const isUnlocked = !!userAchievements[id]; // Проверка: есть ли дата получения
+				if (isUnlocked) count++;
+
+				const div = document.createElement('div');
+				div.className = `ach-card ${isUnlocked ? 'unlocked' : ''}`;
+				
+				div.innerHTML = `
+					<div class="ach-icon">${ach.icon}</div>
+					<div class="ach-title">${ach.title}</div>
+					<div class="ach-desc">${isUnlocked ? ach.desc : '???'}</div>
+					${isUnlocked ? '<div class="ach-date" style="color: #caab05; font-size: 10px; margin-top: 10px; font-style: italic;">Получено: ' + userAchievements[id] + '</div>' : ''}
+				`;
+
+				grid.appendChild(div);
+				});
+			document.getElementById('ach-count').textContent = count;
+		}
+	
+			function addHistoryUI(g) {
+				const li = document.createElement('li'); 
+				li.className = 'history-item';
+				const colors = { 
+					trash: '#4b4b4b', 
+					common: '#ffffff', 
+					uncommon: '#32cd32', 
+					rare: '#4b69ff', 
+					epic: '#8847ff', 
+					legendary: '#caab05', 
+					mythic: '#eb4b4b',
+					godly: '#40e0d0'       /* ← NEW */
+				};
+		// Добавим защиту: если цвета нет, будет серый по умолчанию
+		li.style.borderColor = colors[g.color] || '#555555';
+		li.textContent = g.name; 
+		document.getElementById('history-list').appendChild(li);
+	}
+
+
+		function clearHistory() {
+			if (confirm('Очистить?')) {
+				/* ---------- NEW BEGIN ---------- */
+				// Считываем историю из localStorage
+				const history = JSON.parse(localStorage.getItem('rouletteHistory') || '[]');
+				// Если до очистки в истории ровно одна игра – разблокируем ачивку
+				if (history.length === 1) {
+					unlockAchievement('minimalist');
+				}
+				/* ---------- NEW END ---------- */
+
+				// Очищаем данные
+				localStorage.removeItem('rouletteHistory');
+				document.getElementById('history-list').innerHTML = '';
+				clearClicks++;
+
+				// 5‑й раз очистка → «Отрицание»
+				if (clearClicks >= 5) unlockAchievement('denial');
+
+				// Сбрасываем счётчик «считаем» игр с момента последней очистки
+				gamesSinceClear = 0;
+				localStorage.setItem('gamesSinceClear', '0');
+			}
+		}
+
+        function launchGame() {
+		// Проверяем, что игра была выбрана и запрашиваем подтверждение
+			if (lastWonGame) {
+			if (confirm(`ЗАПУСТИТЬ ${lastWonGame.name}?`)) {
+				window.location.href = `steam://run/${lastWonGame.id}`;
+			}
+				} else {
+			alert("Сначала прокрутите рулетку!");
+		}
+	}
+
+        window.onload = () => { const saved = JSON.parse(localStorage.getItem('rouletteHistory') || '[]'); saved.forEach(g => addHistoryUI(g)); };
+    </script>
+</body>
+</html>
