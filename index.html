@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Steam Roulette v1.5.1</title>
+    <title>Steam Roulette</title>
     <style>
         #bg-canvas {
             position: fixed;
@@ -260,6 +260,7 @@
         <input type="file" id="file-selector" style="display: none;" accept=".json" onchange="handleManualUpload(event)">
         <button id="upload-btn" onclick="document.getElementById('file-selector').click()" style="background: #3d4450;">Загрузить JSON</button>
         <button id="clear-btn" onclick="clearHistory()">Очистить историю</button>
+		<span id="app-version" style="margin-left: auto; color: #4e697d; font-size: 12px; font-family: monospace; align-self: center; padding-left: 20px;"></span>
     </div>
 
     <div id="achievements-overlay" class="library-overlay">
@@ -300,6 +301,19 @@
     </div>
 
     <script>
+	
+		const CONFIG = {
+			version: "v1.5.2",
+            LINKS: {
+                steamImg: "https://shared.fastly.steamstatic.com",
+                steamRun: "steam://run/",
+                placeholder: "https://i.pinimg.com/originals/fe/df/71/fedf7125acf620e856b6d09ef44eee51.gif"
+            }
+        };
+	
+	
+	
+	
         let myGames = [], audioCtx = null, lastWonGame = null, lastGameId = null, idleTimer = null;
         let trashStreak = 0, sessionTrashCount = 0, clearClicks = 0;
         let totalSpins = parseInt(localStorage.getItem('stats_total_spins') || '0');
@@ -501,11 +515,11 @@
             if (!game) return document.createElement('div');
             const div = document.createElement('div');
             div.className = `item ${game.color}`;
-            const imgUrl = `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${game.id}/header.jpg`;
+            const imgUrl = `${CONFIG.LINKS.steamImg}/store_item_assets/steam/apps/${game.id}/header.jpg`;
             div.innerHTML = `
                 <img src="${imgUrl}" 
                      loading="lazy" 
-                     onerror="this.onerror=null; this.src='https://i.pinimg.com/originals/fe/df/71/fedf7125acf620e856b6d09ef44eee51.gif';">
+                     onerror="this.onerror=null; this.src='${CONFIG.LINKS.placeholder}';">
             `;
             return div;
         }
@@ -760,16 +774,16 @@
             sorted.forEach(game => {
                 const div = document.createElement('div'); 
                 div.className = `lib-card ${game.color}`;
-                const imgUrl = `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${game.id}/header.jpg`;
+                const imgUrl = `${CONFIG.LINKS.steamImg}/store_item_assets/steam/apps/${game.id}/header.jpg`;
                 
                 div.innerHTML = `
                     <img src="${imgUrl}" 
                          loading="lazy" 
-                         onerror="this.onerror=null; this.src='https://i.pinimg.com/originals/fe/df/71/fedf7125acf620e856b6d09ef44eee51.gif';">
+                         onerror="this.onerror=null; this.src='${CONFIG.LINKS.placeholder}';">
                 `;
                 
                 div.onclick = () => { 
-                    if(confirm(`ЗАПУСТИТЬ ${game.name}?`)) window.location.href=`steam://run/${game.id}`; 
+                    if(confirm(`ЗАПУСТИТЬ ${game.name}?`)) window.location.href = `${CONFIG.LINKS.steamRun}${game.id}`; 
                 };
                 grid.appendChild(div);
             });
@@ -879,14 +893,23 @@
 		// Проверяем, что игра была выбрана и запрашиваем подтверждение
 			if (lastWonGame) {
 			if (confirm(`ЗАПУСТИТЬ ${lastWonGame.name}?`)) {
-				window.location.href = `steam://run/${lastWonGame.id}`;
+				window.location.href = `${CONFIG.LINKS.steamRun}${game.id}`;
 			}
 				} else {
 			alert("Сначала прокрутите рулетку!");
 		}
 	}
 
-        window.onload = () => { const saved = JSON.parse(localStorage.getItem('rouletteHistory') || '[]'); saved.forEach(g => addHistoryUI(g)); };
+        window.onload = () => { 
+    // Устанавливаем версию из конфига в наш ярлык
+    const versionDisplay = document.getElementById('app-version');
+    if (versionDisplay) versionDisplay.textContent = CONFIG.version;
+
+    // Загружаем историю
+    const saved = JSON.parse(localStorage.getItem('rouletteHistory') || '[]'); 
+    saved.forEach(g => addHistoryUI(g)); 
+};
+
     </script>
 </body>
 </html>
